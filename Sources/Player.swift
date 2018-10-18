@@ -332,7 +332,6 @@ open class Player: UIViewController {
     }
     
     
-    internal var _cachedPlayer: AVPlayer?
     internal var _avplayer: AVPlayer = AVPlayer()
     internal var _playerItem: AVPlayerItem?
 
@@ -367,7 +366,6 @@ open class Player: UIViewController {
 
     deinit {
         self._avplayer.pause()
-        self._cachedPlayer = nil
         self.setupPlayerItem(nil)
 
         self.removePlayerObservers()
@@ -594,7 +592,7 @@ extension Player {
         })
     }
     
-    fileprivate func setupCachedPlayer(_ playerItem: AVPlayerItem) {
+    fileprivate func setupCachedPlayer(_ playerItem: AVPlayerItem, loadableKeys: [String] = ["tracks", "playable", "duration"]) {
         guard isViewLoaded else { return }
         
         if self.playbackState == .playing {
@@ -603,9 +601,33 @@ extension Player {
         
         self.bufferingState = .unknown
         
-        _cachedPlayer = AVPlayer(playerItem: playerItem)
-        _asset = _cachedPlayer?.currentItem?.asset
-        setupPlayerItem(_cachedPlayer?.currentItem)
+        _asset = playerItem.asset
+        
+        self._asset?.loadValuesAsynchronously(forKeys: loadableKeys , completionHandler: { () -> Void in
+            if let asset = self._asset {
+                for key in loadableKeys {
+                    var error: NSError? = nil
+                    let status = asset.statusOfValue(forKey: key, error: &error)
+                    if status == .failed {
+                        self.playbackState = .failed
+                        self.executeClosureOnMainQueueIfNecessary {
+                            self.playerDelegate?.player(self, didFailWithError: PlayerError.failed)
+                        }
+                        return
+                    }
+                }
+                
+                if !asset.isPlayable {
+                    self.playbackState = .failed
+                    self.executeClosureOnMainQueueIfNecessary {
+                        self.playerDelegate?.player(self, didFailWithError: PlayerError.failed)
+                    }
+                    return
+                }
+                let currentPlayerItem = AVPlayerItem(asset:asset)
+                self.setupPlayerItem(currentPlayerItem)
+            }
+        })
     }
 
     fileprivate func setupPlayerItem(_ playerItem: AVPlayerItem?) {

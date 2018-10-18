@@ -153,6 +153,11 @@ open class Player: UIViewController {
         get { return _asset }
         set { _ = newValue.map { setupAsset($0) } }
     }
+    
+    open var cachedPlayerItem: AVPlayerItem? {
+        get { return _playerItem }
+        set { _ = newValue.map { setupCachedPlayer($0) } }
+    }
 
     /// Specifies how the video is displayed within a player layer’s bounds.
     /// The default value is `AVLayerVideoGravityResizeAspect`. See `PlayerFillMode`.
@@ -325,6 +330,9 @@ open class Player: UIViewController {
             }
         }
     }
+    
+    
+    internal var _cachedPlayer: AVPlayer?
     internal var _avplayer: AVPlayer = AVPlayer()
     internal var _playerItem: AVPlayerItem?
 
@@ -359,6 +367,7 @@ open class Player: UIViewController {
 
     deinit {
         self._avplayer.pause()
+        self._cachedPlayer = nil
         self.setupPlayerItem(nil)
 
         self.removePlayerObservers()
@@ -583,6 +592,20 @@ extension Player {
                 self.setupPlayerItem(playerItem)
             }
         })
+    }
+    
+    fileprivate func setupCachedPlayer(_ playerItem: AVPlayerItem) {
+        guard isViewLoaded else { return }
+        
+        if self.playbackState == .playing {
+            self.pause()
+        }
+        
+        self.bufferingState = .unknown
+        
+        _cachedPlayer = AVPlayer(playerItem: playerItem)
+        _asset = _cachedPlayer?.currentItem?.asset
+        setupPlayerItem(_cachedPlayer?.currentItem)
     }
 
     fileprivate func setupPlayerItem(_ playerItem: AVPlayerItem?) {
